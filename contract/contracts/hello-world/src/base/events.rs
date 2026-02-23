@@ -42,6 +42,14 @@ pub struct GroupActivated {
 
 #[contractevent(data_format = "single-value")]
 #[derive(Clone)]
+pub struct GroupDeleted {
+    #[topic]
+    pub deleter: Address,
+    pub id: BytesN<32>,
+}
+
+#[contractevent(data_format = "single-value")]
+#[derive(Clone)]
 pub struct AdminTransferred {
     #[topic]
     pub old_admin: Address,
