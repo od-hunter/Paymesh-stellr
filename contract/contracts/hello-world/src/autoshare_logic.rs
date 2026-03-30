@@ -2091,6 +2091,49 @@ pub fn get_member_earnings(env: Env, member: Address, group_id: BytesN<32>) -> i
     earnings
 }
 
+/// Returns a breakdown of a member's earnings across all groups they belong to.
+/// Each entry in the returned Vec is a (group_id, earnings) tuple.
+/// Only groups where the member has earned more than zero are included.
+/// Returns an empty Vec if the member has no groups or no positive earnings.
+pub fn get_member_earnings_breakdown(env: Env, member: Address) -> Vec<(BytesN<32>, i128)> {
+    // Step 1: Read the list of group IDs this member belongs to.
+    // MemberGroups is updated whenever a member is added/removed from a group.
+    let member_groups_key = DataKey::MemberGroups(member.clone());
+    let group_ids: Vec<BytesN<32>> = env
+        .storage()
+        .persistent()
+        .get(&member_groups_key)
+        .unwrap_or(Vec::new(&env));
+
+    // If the member has no groups at all, return empty immediately.
+    if group_ids.is_empty() {
+        return Vec::new(&env);
+    }
+
+    // Bump TTL for the member groups index since we just read it.
+    bump_persistent(&env, &member_groups_key);
+
+    // Step 2: For each group, look up the member's earnings in that group.
+    // Step 3: Filter out groups where earnings are zero — only keep positive entries.
+    let mut breakdown: Vec<(BytesN<32>, i128)> = Vec::new(&env);
+    for group_id in group_ids.iter() {
+        let earnings_key = DataKey::MemberGroupEarnings(member.clone(), group_id.clone());
+        let earnings: i128 = env
+            .storage()
+            .persistent()
+            .get(&earnings_key)
+            .unwrap_or(0);
+
+        // Only include this group if the member has actually earned something from it.
+        if earnings > 0 {
+            bump_persistent(&env, &earnings_key);
+            breakdown.push_back((group_id, earnings));
+        }
+    }
+
+    breakdown
+}
+
 pub fn get_fundraising_status(env: Env, id: BytesN<32>) -> FundraisingConfig {
     let key = DataKey::GroupFundraising(id);
     let result: Option<FundraisingConfig> = env.storage().persistent().get(&key);

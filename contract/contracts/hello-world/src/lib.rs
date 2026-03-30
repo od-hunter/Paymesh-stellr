@@ -430,6 +430,16 @@ impl AutoShareContract {
         autoshare_logic::get_member_earnings(env, member, group_id)
     }
 
+    /// Returns a per-group earnings breakdown for a member.
+    /// Each entry is a (group_id, earnings) tuple — only groups with earnings > 0 are included.
+    /// Returns an empty Vec if the member has no groups or has not earned anything yet.
+    pub fn get_member_earnings_breakdown(
+        env: Env,
+        member: Address,
+    ) -> Vec<(BytesN<32>, i128)> {
+        autoshare_logic::get_member_earnings_breakdown(env, member)
+    }
+
     /// Returns the fundraising status for a group.
     pub fn get_fundraising_status(env: Env, id: BytesN<32>) -> base::types::FundraisingConfig {
         autoshare_logic::get_fundraising_status(env, id)
@@ -590,6 +600,10 @@ mod distribute_test;
 #[cfg(test)]
 #[path = "tests/earnings_test.rs"]
 mod earnings_test;
+
+#[cfg(test)]
+#[path = "tests/earnings_breakdown_test.rs"]
+mod earnings_breakdown_test;
 
 #[cfg(test)]
 #[path = "tests/pagination_test.rs"]
