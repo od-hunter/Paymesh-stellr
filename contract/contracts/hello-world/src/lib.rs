@@ -769,9 +769,55 @@ impl AutoShareContract {
     // Protocol Configuration
     // ============================================================================
 
-    /// Returns the current protocol fee percentage (in basis points) and the fee recipient.
+    /// Returns the current protocol fee percentage (in basis points) and the fee recipient address.
     ///
-    /// This is a read-only operation that tracks invocations for off-chain analytics.
+    /// This function retrieves the global protocol fee configuration, which consists of:
+    /// - **Fee percentage**: Expressed in basis points (1 bp = 0.01%, so 100 bps = 1%)
+    ///   Maximum value is 10,000 bps (100%).
+    /// - **Recipient address**: The Stellar address that receives collected protocol fees.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The Soroban environment providing access to storage and ledger state.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// * `u32` - The current protocol fee in basis points (0-10000)
+    /// * `Address` - The fee recipient's Stellar address
+    ///
+    /// # Events
+    ///
+    /// Emits a `ProtocolFeeRead` event for off-chain analytics tracking. This allows
+    /// indexers and analytics dashboards to monitor how frequently this configuration
+    /// is queried without requiring additional RPC calls.
+    ///
+    /// # Performance
+    ///
+    /// This is a read-only operation that bumps the TTL of the stored configuration
+    /// to prevent expiration. Storage reads are optimized with persistent storage
+    /// bump-on-read semantics.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Get current protocol fee configuration
+    /// let (fee_bps, recipient) = contract.get_protocol_fee();
+    ///
+    /// // fee_bps = 50 means 0.5% fee (50 basis points)
+    /// // recipient = Address of fee collector
+    /// ```
+    ///
+    /// # Related Functions
+    ///
+    /// * `set_protocol_fee()` - Admin function to update fee and recipient
+    /// * `get_group_protocol_fee()` - Get group-specific protocol fee override
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic under normal operation. It will only panic if
+    /// the underlying storage read fails, which should not occur if the contract
+    /// has been properly initialized.
     pub fn get_protocol_fee(env: Env) -> (u32, Address) {
         let (fee, recipient) = autoshare_logic::get_protocol_fee(env.clone());
 
@@ -781,19 +827,68 @@ impl AutoShareContract {
         (fee, recipient)
     }
 
-    /// Sets the protocol fee and recipient address (admin only).
-    /// Add comprehensive Rustdoc (Issue #290).
+    /// Sets the protocol fee percentage and recipient address (admin only).
+    ///
+    /// This function updates the global protocol fee configuration that determines
+    /// what percentage of distributions are collected as protocol fees and which
+    /// address receives those fees.
     ///
     /// # Arguments
     ///
     /// * `env` - The Soroban environment.
-    /// * `fee` - New fee in basis points (max 10000).
-    /// * `recipient` - New address to receive protocol fees.
-    /// * `admin` - Current contract admin address. Must authorize.
+    /// * `fee` - New protocol fee in basis points (1 bp = 0.01%).
+    ///   Valid range: 0 to 10,000 (where 10,000 = 100%).
+    /// * `recipient` - Stellar address that will receive collected protocol fees.
+    /// * `admin` - Current contract admin address. Must authorize this call.
+    ///
+    /// # Authorization
+    ///
+    /// Only the contract admin can call this function. The admin address must
+    /// provide valid Soroban authentication.
+    ///
+    /// # Validation
+    ///
+    /// * Fee must be <= 10,000 basis points (100%)
+    /// * Caller must be the current admin
+    ///
+    /// # Events
+    ///
+    /// Emits a `ProtocolFeeUpdated` event containing:
+    /// - Admin address (topic)
+    /// - Old fee percentage
+    /// - New fee percentage
+    /// - Old recipient address
+    /// - New recipient address
+    ///
+    /// # Storage
+    ///
+    /// Updates two persistent storage keys:
+    /// - `ProtocolFee` - Stores the fee percentage
+    /// - `ProtocolFeeRecipient` - Stores the recipient address
+    ///
+    /// Both keys are bumped to ensure they don't expire.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Set 0.5% fee (50 basis points) with new recipient
+    /// contract.set_protocol_fee(50, new_recipient, admin);
+    ///
+    /// // Set 0% fee (no protocol fee)
+    /// contract.set_protocol_fee(0, recipient, admin);
+    /// ```
+    ///
+    /// # Related Functions
+    ///
+    /// * `get_protocol_fee()` - Read current fee configuration
+    /// * `set_group_protocol_fee()` - Set group-specific fee override
     ///
     /// # Panics
     ///
-    /// Panics if the caller is not the admin or if the fee exceeds 10000 bps.
+    /// Panics if:
+    /// - The caller is not the admin
+    /// - The fee exceeds 10,000 basis points
+    /// - Storage operations fail
     pub fn set_protocol_fee(env: Env, fee: u32, recipient: Address, admin: Address) {
         autoshare_logic::set_protocol_fee(env, fee, recipient, admin).unwrap();
     }
