@@ -477,3 +477,22 @@ pub struct ProtocolFeeRead {
 pub fn emit_protocol_fee_read(env: &Env, fee: u32, recipient: Address) {
     ProtocolFeeRead { fee, recipient }.publish(env);
 }
+
+/// Emitted when get_group_members is queried for analytics tracking.
+#[contractevent]
+#[derive(Clone)]
+pub struct GroupMembersQueried {
+    #[topic]
+    pub group_id: BytesN<32>,
+    pub member_count: u32,
+    pub query_count: u64,
+}
+
+pub fn emit_group_members_queried(env: &Env, group_id: BytesN<32>, member_count: u32, query_count: u64) {
+    GroupMembersQueried {
+        group_id,
+        member_count,
+        query_count,
+    }
+    .publish(env);
+}

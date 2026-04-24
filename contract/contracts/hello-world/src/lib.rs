@@ -243,6 +243,34 @@ impl AutoShareContract {
         autoshare_logic::get_group_members(env, id).unwrap()
     }
 
+    /// Returns a paginated list of all current members in a specific group.
+    ///
+    /// This function provides efficient access to group members with pagination support,
+    /// optimized for storage reads and minimal data transfer for frontend displays.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The Soroban environment
+    /// * `id` - The unique identifier of the AutoShare group
+    /// * `offset` - The starting index for pagination (0-based)
+    /// * `limit` - The maximum number of members to return
+    ///
+    /// # Returns
+    ///
+    /// Returns a `MemberPage` struct with members, total count, offset, and limit.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the group does not exist.
+    pub fn get_group_members_paginated(
+        env: Env,
+        id: BytesN<32>,
+        offset: u32,
+        limit: u32,
+    ) -> base::types::MemberPage {
+        autoshare_logic::get_group_members_paginated(env, id, offset, limit).unwrap()
+    }
+
     /// Returns the cumulative number of times `get_group_members` has been called
     /// for a specific group. Useful for off-chain analytics.
     pub fn get_group_members_query_count(env: Env, id: BytesN<32>) -> u64 {

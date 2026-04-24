@@ -1,17 +1,17 @@
 use crate::base::errors::Error;
 use crate::base::events::{
     emit_contribution, emit_creator_is_member, emit_distribution, emit_fundraising_cancelled,
-    emit_fundraising_target_updated, emit_funds_deposited, emit_max_members_updated,
-    emit_member_removed, emit_payment_group_deactivated, emit_usage_fee_updated, AdminTransferred,
-    AutoshareCreated, AutoshareUpdated, ContractPaused, ContractUnpaused, FundraisingStarted,
-    GroupActivated, GroupDeactivated, GroupDeleted, GroupNameUpdated, GroupOwnershipTransferred,
-    Withdrawal,
+    emit_fundraising_target_updated, emit_funds_deposited, emit_group_members_queried,
+    emit_max_members_updated, emit_member_removed, emit_payment_group_deactivated,
+    emit_usage_fee_updated, AdminTransferred, AutoshareCreated, AutoshareUpdated, ContractPaused,
+    ContractUnpaused, FundraisingStarted, GroupActivated, GroupDeactivated, GroupDeleted,
+    GroupNameUpdated, GroupOwnershipTransferred, Withdrawal,
 };
 
 use crate::base::types::{
     ActiveFundraising, AutoShareDetails, DepositRecord, DistributionHistory, DistributionRecord,
     FundraisingConfig, FundraisingContribution, GroupMember, GroupPage, GroupStats, GroupSummary,
-    MemberAmount, MemberDistributionRecord, PaymentHistory,
+    MemberAmount, MemberDistributionRecord, MemberPage, PaymentHistory,
 };
 use soroban_sdk::{contracttype, token, Address, BytesN, Env, String, Vec};
 
@@ -572,6 +572,59 @@ pub fn get_group_members_query_count(env: Env, id: BytesN<32>) -> u64 {
         bump_persistent(&env, &key);
     }
     count
+}
+
+/// Returns a paginated list of all current members in a specific group.
+///
+/// This function provides efficient access to group members with pagination support,
+/// optimized for storage reads and minimal data transfer.
+///
+/// # Arguments
+///
+/// * `env` - The Soroban environment
+/// * `id` - The unique identifier of the AutoShare group
+/// * `offset` - The starting index for pagination (0-based)
+/// * `limit` - The maximum number of members to return
+///
+/// # Returns
+///
+/// Returns a `MemberPage` struct containing:
+/// * `members` - Vector of GroupMember in the current page
+/// * `total` - Total number of members in the group
+/// * `offset` - The offset used for this query
+/// * `limit` - The limit used for this query
+///
+/// # Errors
+///
+/// Returns `NotFound` if the group does not exist.
+pub fn get_group_members_paginated(
+    env: Env,
+    id: BytesN<32>,
+    offset: u32,
+    limit: u32,
+) -> Result<MemberPage, Error> {
+    let details = get_autoshare(env.clone(), id.clone())?;
+    let all_members = details.members;
+    let total = all_members.len();
+
+    // Calculate start and end indices for pagination
+    let start = offset.min(total);
+    let end = (start + limit).min(total);
+
+    // Extract the page of members
+    let mut page_members = Vec::new(&env);
+    let mut i = start;
+    while i < end {
+        page_members.push_back(all_members.get(i).unwrap());
+        i += 1;
+    }
+
+    Ok(MemberPage {
+        members: page_members,
+        total,
+        offset,
+        limit,
+    })
 }
 
 pub fn get_member_percentage(env: Env, id: BytesN<32>, member: Address) -> Result<u32, Error> {    let details = get_autoshare(env, id)?;
