@@ -723,40 +723,36 @@ impl AutoShareContract {
     }
 
     // ============================================================================
-    // Treasury
+    // Protocol Configuration
     // ============================================================================
 
-    /// Deposits `amount` of `token` into the group's treasury for future distributions.
-    /// The depositor must authorize the call. Group must be active and token supported.
-    pub fn deposit_funds(
-        env: Env,
-        id: BytesN<32>,
-        token: Address,
-        amount: i128,
-        depositor: Address,
-    ) {
-        autoshare_logic::deposit_funds(env, id, token, amount, depositor).unwrap();
+    /// Returns the current protocol fee percentage (in basis points) and the fee recipient.
+    ///
+    /// This is a read-only operation that tracks invocations for off-chain analytics.
+    pub fn get_protocol_fee(env: Env) -> (u32, Address) {
+        let (fee, recipient) = autoshare_logic::get_protocol_fee(env.clone());
+
+        // Internal analytics: track read invocation (Issue #294)
+        crate::base::events::emit_protocol_fee_read(&env, fee, recipient.clone());
+
+        (fee, recipient)
     }
 
-    /// Returns the treasury balance for a specific (group, token) pair.
-    pub fn get_group_treasury_balance(env: Env, id: BytesN<32>, token: Address) -> i128 {
-        autoshare_logic::get_group_treasury_balance(env, id, token)
-    }
-
-    /// Returns the full deposit history for a group.
-    pub fn get_group_deposit_history(
-        env: Env,
-        id: BytesN<32>,
-    ) -> Vec<base::types::DepositRecord> {
-        autoshare_logic::get_group_deposit_history(env, id)
-    }
-
-    /// Returns the full deposit history for a specific depositor across all groups.
-    pub fn get_depositor_history(
-        env: Env,
-        depositor: Address,
-    ) -> Vec<base::types::DepositRecord> {
-        autoshare_logic::get_depositor_history(env, depositor)
+    /// Sets the protocol fee and recipient address (admin only).
+    /// Add comprehensive Rustdoc (Issue #290).
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The Soroban environment.
+    /// * `fee` - New fee in basis points (max 10000).
+    /// * `recipient` - New address to receive protocol fees.
+    /// * `admin` - Current contract admin address. Must authorize.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the caller is not the admin or if the fee exceeds 10000 bps.
+    pub fn set_protocol_fee(env: Env, fee: u32, recipient: Address, admin: Address) {
+        autoshare_logic::set_protocol_fee(env, fee, recipient, admin).unwrap();
     }
 }
 
@@ -926,13 +922,13 @@ mod update_payment_group_test;
 mod update_payment_group_boundary_test;
 
 #[cfg(test)]
-#[path = "tests/set_protocol_fee_test.rs"]
-mod set_protocol_fee_test;
+#[path = "tests/get_group_members_diagnostics_test.rs"]
+mod get_group_members_diagnostics_test;
 
 #[cfg(test)]
-#[path = "tests/update_payment_group_advanced_test.rs"]
-mod update_payment_group_advanced_test;
+#[path = "tests/get_group_members_boundary_test.rs"]
+mod get_group_members_boundary_test;
 
 #[cfg(test)]
-#[path = "tests/deposit_funds_test.rs"]
-mod deposit_funds_test;
+#[path = "tests/protocol_fee_boundary_test.rs"]
+mod protocol_fee_boundary_test;
