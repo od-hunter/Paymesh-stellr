@@ -40,6 +40,10 @@ pub enum DataKey {
     GroupMembersQueryCount(BytesN<32>),
     ProtocolFee,
     ProtocolFeeRecipient,
+    // Issue #299: Deposit/Treasury tracking
+    GroupTreasuryBalance(BytesN<32>, Address),
+    GroupDepositHistory(BytesN<32>),
+    DepositorHistory(Address),
 }
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -3579,4 +3583,185 @@ fn get_protocol_recipient_val(env: &Env) -> Address {
         bump_persistent(env, &key);
     }
     recipient
+}
+
+// ============================================================================
+// Issue #299: Deposit Funds Implementation
+// ============================================================================
+
+/// Deposits funds into a group's treasury for future distributions.
+///
+/// This function allows any user to deposit supported tokens into an active group's
+/// treasury. The deposited amount is transferred from the depositor to the contract
+/// and tracked for analytics and history purposes.
+///
+/// # Arguments
+///
+/// * `env` - The Soroban environment
+/// * `id` - The unique identifier of the AutoShare group
+/// * `token` - The token address being deposited
+/// * `amount` - The amount to deposit (must be > 0)
+/// * `depositor` - The address of the depositor (must authorize)
+///
+/// # Events
+///
+/// Emits `FundsDeposited` event with group_id, depositor, token, amount, and new treasury balance.
+///
+/// # Errors
+///
+/// Returns `InvalidAmount` if amount <= 0.
+/// Returns `ContractPaused` if the contract is paused.
+/// Returns `NotFound` if the group does not exist.
+/// Returns `GroupInactive` if the group is not active.
+/// Returns `UnsupportedToken` if the token is not in the supported list.
+pub fn deposit_funds(
+    env: Env,
+    id: BytesN<32>,
+    token: Address,
+    amount: i128,
+    depositor: Address,
+) -> Result<(), Error> {
+    // Validate amount
+    if amount <= 0 {
+        return Err(Error::InvalidAmount);
+    }
+
+    // Check contract is not paused
+    if get_paused_status(&env) {
+        return Err(Error::ContractPaused);
+    }
+
+    // Validate group exists and is active
+    let group_key = DataKey::AutoShare(id.clone());
+    if !env.storage().persistent().has(&group_key) {
+        return Err(Error::NotFound);
+    }
+
+    let group: AutoShareDetails = env.storage().persistent().get(&group_key).unwrap();
+    if !group.is_active {
+        return Err(Error::GroupInactive);
+    }
+
+    // Validate token is supported
+    if !is_token_supported(env.clone(), token.clone()) {
+        return Err(Error::UnsupportedToken);
+    }
+
+    // Require depositor authorization
+    depositor.require_auth();
+
+    // Transfer tokens from depositor to contract
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&depositor, &env.current_contract_address(), &amount);
+
+    // Update treasury balance
+    let balance_key = DataKey::GroupTreasuryBalance(id.clone(), token.clone());
+    let current_balance: i128 = env.storage().persistent().get(&balance_key).unwrap_or(0);
+    let new_balance = current_balance + amount;
+    env.storage().persistent().set(&balance_key, &new_balance);
+    bump_persistent(&env, &balance_key);
+
+    // Create deposit record
+    let deposit_record = DepositRecord {
+        group_id: id.clone(),
+        depositor: depositor.clone(),
+        token: token.clone(),
+        amount,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    // Record in group history
+    let group_history_key = DataKey::GroupDepositHistory(id.clone());
+    let mut group_history: Vec<DepositRecord> = env
+        .storage()
+        .persistent()
+        .get(&group_history_key)
+        .unwrap_or_else(|| Vec::new(&env));
+    group_history.push_back(deposit_record.clone());
+    env.storage().persistent().set(&group_history_key, &group_history);
+    bump_persistent(&env, &group_history_key);
+
+    // Record in depositor history
+    let depositor_history_key = DataKey::DepositorHistory(depositor.clone());
+    let mut depositor_history: Vec<DepositRecord> = env
+        .storage()
+        .persistent()
+        .get(&depositor_history_key)
+        .unwrap_or_else(|| Vec::new(&env));
+    depositor_history.push_back(deposit_record);
+    env.storage()
+        .persistent()
+        .set(&depositor_history_key, &depositor_history);
+    bump_persistent(&env, &depositor_history_key);
+
+    // Emit FundsDeposited event
+    emit_funds_deposited(&env, id, depositor, token, amount, new_balance);
+
+    Ok(())
+}
+
+/// Returns the treasury balance for a specific group and token.
+///
+/// # Arguments
+///
+/// * `env` - The Soroban environment
+/// * `id` - The unique identifier of the AutoShare group
+/// * `token` - The token address to check balance for
+///
+/// # Returns
+///
+/// Returns the current treasury balance (0 if no deposits have been made).
+pub fn get_group_treasury_balance(env: Env, id: BytesN<32>, token: Address) -> i128 {
+    let key = DataKey::GroupTreasuryBalance(id, token);
+    let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    if env.storage().persistent().has(&key) {
+        bump_persistent(&env, &key);
+    }
+    balance
+}
+
+/// Returns all deposit history records for a specific group.
+///
+/// # Arguments
+///
+/// * `env` - The Soroban environment
+/// * `id` - The unique identifier of the AutoShare group
+///
+/// # Returns
+///
+/// Returns a vector of all deposit records for the group (empty if no deposits).
+pub fn get_group_deposit_history(env: Env, id: BytesN<32>) -> Vec<DepositRecord> {
+    let key = DataKey::GroupDepositHistory(id);
+    let history: Vec<DepositRecord> = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| Vec::new(&env));
+    if env.storage().persistent().has(&key) {
+        bump_persistent(&env, &key);
+    }
+    history
+}
+
+/// Returns all deposit history records for a specific depositor across all groups.
+///
+/// # Arguments
+///
+/// * `env` - The Soroban environment
+/// * `depositor` - The address of the depositor
+///
+/// # Returns
+///
+/// Returns a vector of all deposit records by the depositor (empty if no deposits).
+pub fn get_depositor_history(env: Env, depositor: Address) -> Vec<DepositRecord> {
+    let key = DataKey::DepositorHistory(depositor);
+    let history: Vec<DepositRecord> = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| Vec::new(&env));
+    if env.storage().persistent().has(&key) {
+        bump_persistent(&env, &key);
+    }
+    history
 }

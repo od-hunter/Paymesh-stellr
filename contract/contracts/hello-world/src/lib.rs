@@ -892,6 +892,46 @@ impl AutoShareContract {
     pub fn set_protocol_fee(env: Env, fee: u32, recipient: Address, admin: Address) {
         autoshare_logic::set_protocol_fee(env, fee, recipient, admin).unwrap();
     }
+
+    // ============================================================================
+    // Issue #299: Deposit Funds
+    // ============================================================================
+
+    /// Deposits funds into a group's treasury for future distributions.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The Soroban environment
+    /// * `id` - The unique identifier of the AutoShare group
+    /// * `token` - The token address being deposited
+    /// * `amount` - The amount to deposit (must be > 0)
+    /// * `depositor` - The address of the depositor (must authorize)
+    ///
+    /// # Events
+    ///
+    /// Emits `FundsDeposited` event.
+    ///
+    /// # Panics
+    ///
+    /// Panics if validation fails or token transfer fails.
+    pub fn deposit_funds(env: Env, id: BytesN<32>, token: Address, amount: i128, depositor: Address) {
+        autoshare_logic::deposit_funds(env, id, token, amount, depositor).unwrap();
+    }
+
+    /// Returns the treasury balance for a specific group and token.
+    pub fn get_group_treasury_balance(env: Env, id: BytesN<32>, token: Address) -> i128 {
+        autoshare_logic::get_group_treasury_balance(env, id, token)
+    }
+
+    /// Returns all deposit history records for a specific group.
+    pub fn get_group_deposit_history(env: Env, id: BytesN<32>) -> Vec<base::types::DepositRecord> {
+        autoshare_logic::get_group_deposit_history(env, id)
+    }
+
+    /// Returns all deposit history records for a specific depositor across all groups.
+    pub fn get_depositor_history(env: Env, depositor: Address) -> Vec<base::types::DepositRecord> {
+        autoshare_logic::get_depositor_history(env, depositor)
+    }
 }
 
 // 3. Link the tests (Requirement: Unit Tests)
@@ -1078,3 +1118,7 @@ mod get_group_members_boundary_test;
 #[cfg(test)]
 #[path = "tests/protocol_fee_boundary_test.rs"]
 mod protocol_fee_boundary_test;
+
+#[cfg(test)]
+#[path = "tests/deposit_funds_test.rs"]
+mod deposit_funds_test;
