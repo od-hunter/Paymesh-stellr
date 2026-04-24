@@ -372,3 +372,36 @@ pub fn emit_fundraising_cancelled(env: &Env, group_id: BytesN<32>, total_raised:
     }
     .publish(env);
 }
+
+#[contractevent]
+#[derive(Clone)]
+pub struct MemberAddedToGroup {
+    #[topic]
+    pub group_id: BytesN<32>,
+    #[topic]
+    pub member: Address,
+    #[topic]
+    pub caller: Address,
+    pub percentage: u32,
+    pub new_member_count: u32,
+    pub timestamp: u64,
+}
+
+pub fn emit_member_added_to_group(
+    env: &Env,
+    group_id: BytesN<32>,
+    member: Address,
+    caller: Address,
+    percentage: u32,
+    new_member_count: u32,
+) {
+    MemberAddedToGroup {
+        group_id,
+        member,
+        caller,
+        percentage,
+        new_member_count,
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
+}

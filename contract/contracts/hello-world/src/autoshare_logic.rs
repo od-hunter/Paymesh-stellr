@@ -695,6 +695,15 @@ pub fn add_group_member(
 
     crate::base::events::emit_member_added(&env, id.clone(), address.clone(), percentage);
 
+    crate::base::events::emit_member_added_to_group(
+        &env,
+        id,
+        address,
+        caller,
+        percentage,
+        details.members.len(),
+    );
+
     Ok(())
 }
 
