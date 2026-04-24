@@ -1,7 +1,7 @@
 use crate::base::errors::Error;
 use crate::base::events::{
     emit_contribution, emit_creator_is_member, emit_distribution, emit_fundraising_cancelled,
-    emit_fundraising_target_updated, emit_group_members_queried, emit_max_members_updated,
+    emit_fundraising_target_updated, emit_funds_deposited, emit_max_members_updated,
     emit_member_removed, emit_payment_group_deactivated, emit_usage_fee_updated, AdminTransferred,
     AutoshareCreated, AutoshareUpdated, ContractPaused, ContractUnpaused, FundraisingStarted,
     GroupActivated, GroupDeactivated, GroupDeleted, GroupNameUpdated, GroupOwnershipTransferred,
@@ -9,7 +9,7 @@ use crate::base::events::{
 };
 
 use crate::base::types::{
-    ActiveFundraising, AutoShareDetails, DistributionHistory, DistributionRecord,
+    ActiveFundraising, AutoShareDetails, DepositRecord, DistributionHistory, DistributionRecord,
     FundraisingConfig, FundraisingContribution, GroupMember, GroupPage, GroupStats, GroupSummary,
     MemberAmount, MemberDistributionRecord, PaymentHistory,
 };
@@ -36,8 +36,14 @@ pub enum DataKey {
     GroupDistributions(BytesN<32>),
     MaxMembers,
     MinContribution,
-    // Diagnostic: per-group invocation counter for get_group_members
-    GroupMembersQueryCount(BytesN<32>),
+    ProtocolFee,
+    GroupProtocolFee(BytesN<32>),
+    // Treasury: per-group, per-token accumulated balance available for distribution
+    GroupTreasury(BytesN<32>, Address),
+    // Deposit history: per-group ordered list of DepositRecord
+    GroupDepositHistory(BytesN<32>),
+    // Depositor history: per-address ordered list of DepositRecord
+    DepositorHistory(Address),
 }
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -1169,6 +1175,55 @@ pub fn get_usage_fee(env: Env) -> u32 {
         bump_persistent(&env, &fee_key);
     }
     result.unwrap_or(10u32)
+}
+
+/// Sets the global protocol fee percentage (0–100). Pass `group_id = None` for the global
+/// default, or `Some(id)` to override the fee for a specific group. Admin only.
+pub fn set_protocol_fee(
+    env: Env,
+    admin: Address,
+    fee_percent: u32,
+    group_id: Option<BytesN<32>>,
+) -> Result<(), Error> {
+    admin.require_auth();
+    require_admin(&env, &admin)?;
+
+    if fee_percent > 100 {
+        return Err(Error::InvalidInput);
+    }
+
+    match group_id {
+        Some(id) => {
+            let key = DataKey::GroupProtocolFee(id);
+            env.storage().persistent().set(&key, &fee_percent);
+            bump_persistent(&env, &key);
+        }
+        None => {
+            let key = DataKey::ProtocolFee;
+            env.storage().persistent().set(&key, &fee_percent);
+            bump_persistent(&env, &key);
+        }
+    }
+
+    Ok(())
+}
+
+/// Returns the effective protocol fee percentage for a group.
+/// Falls back to the global protocol fee if no group-specific override is set.
+pub fn get_protocol_fee(env: Env, group_id: Option<BytesN<32>>) -> u32 {
+    if let Some(id) = group_id {
+        let group_key = DataKey::GroupProtocolFee(id);
+        if let Some(fee) = env.storage().persistent().get::<DataKey, u32>(&group_key) {
+            bump_persistent(&env, &group_key);
+            return fee;
+        }
+    }
+    let global_key = DataKey::ProtocolFee;
+    let result: Option<u32> = env.storage().persistent().get(&global_key);
+    if result.is_some() {
+        bump_persistent(&env, &global_key);
+    }
+    result.unwrap_or(0u32)
 }
 
 pub fn set_max_members(env: Env, admin: Address, max: u32) -> Result<(), Error> {
@@ -3290,4 +3345,153 @@ pub fn cancel_fundraising(env: Env, id: BytesN<32>, caller: Address) -> Result<(
     emit_fundraising_cancelled(&env, id.clone(), total_raised_at_cancellation);
 
     Ok(())
+}
+
+// ============================================================================
+// Treasury — deposit_funds
+// ============================================================================
+
+/// Deposits `amount` of `token` into the group's treasury, making those funds
+/// available for future `distribute` calls without requiring the sender to be
+/// present at distribution time.
+///
+/// # Checks (in order)
+/// 1. `depositor` must authorize the call.
+/// 2. Contract must not be paused.
+/// 3. `amount` must be > 0.
+/// 4. `token` must be on the supported-token list.
+/// 5. Group identified by `id` must exist.
+/// 6. Group must be active.
+///
+/// # Storage mutations
+/// - Transfers `amount` of `token` from `depositor` to the contract address.
+/// - Increments `GroupTreasury(id, token)` by `amount`.
+/// - Appends a `DepositRecord` to `GroupDepositHistory(id)`.
+/// - Appends a `DepositRecord` to `DepositorHistory(depositor)`.
+///
+/// # Events
+/// Emits `FundsDeposited { group_id, depositor, token, amount, new_treasury_balance }`.
+pub fn deposit_funds(
+    env: Env,
+    id: BytesN<32>,
+    token: Address,
+    amount: i128,
+    depositor: Address,
+) -> Result<(), Error> {
+    // 1. Authorization
+    depositor.require_auth();
+
+    // 2. Pause guard
+    if get_paused_status(&env) {
+        return Err(Error::ContractPaused);
+    }
+
+    // 3. Amount validation — must be strictly positive
+    if amount <= 0 {
+        return Err(Error::InvalidAmount);
+    }
+
+    // 4. Token must be supported
+    if !is_token_supported(env.clone(), token.clone()) {
+        return Err(Error::UnsupportedToken);
+    }
+
+    // 5 & 6. Group must exist and be active
+    let group_key = DataKey::AutoShare(id.clone());
+    let details: AutoShareDetails = env
+        .storage()
+        .persistent()
+        .get(&group_key)
+        .ok_or(Error::NotFound)?;
+    bump_persistent(&env, &group_key);
+
+    if !details.is_active {
+        return Err(Error::GroupInactive);
+    }
+
+    // Transfer tokens from depositor into the contract
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&depositor, &env.current_contract_address(), &amount);
+
+    // Update per-group, per-token treasury balance
+    let treasury_key = DataKey::GroupTreasury(id.clone(), token.clone());
+    let current_balance: i128 = env
+        .storage()
+        .persistent()
+        .get(&treasury_key)
+        .unwrap_or(0i128);
+    let new_balance = current_balance + amount;
+    env.storage().persistent().set(&treasury_key, &new_balance);
+    bump_persistent(&env, &treasury_key);
+
+    // Build deposit record
+    let record = DepositRecord {
+        group_id: id.clone(),
+        depositor: depositor.clone(),
+        token: token.clone(),
+        amount,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    // Append to group deposit history
+    let group_hist_key = DataKey::GroupDepositHistory(id.clone());
+    let mut group_history: Vec<DepositRecord> = env
+        .storage()
+        .persistent()
+        .get(&group_hist_key)
+        .unwrap_or(Vec::new(&env));
+    group_history.push_back(record.clone());
+    env.storage()
+        .persistent()
+        .set(&group_hist_key, &group_history);
+    bump_persistent(&env, &group_hist_key);
+
+    // Append to depositor history
+    let depositor_hist_key = DataKey::DepositorHistory(depositor.clone());
+    let mut depositor_history: Vec<DepositRecord> = env
+        .storage()
+        .persistent()
+        .get(&depositor_hist_key)
+        .unwrap_or(Vec::new(&env));
+    depositor_history.push_back(record);
+    env.storage()
+        .persistent()
+        .set(&depositor_hist_key, &depositor_history);
+    bump_persistent(&env, &depositor_hist_key);
+
+    // Emit event
+    emit_funds_deposited(&env, id, depositor, token, amount, new_balance);
+
+    Ok(())
+}
+
+/// Returns the treasury balance for a specific `(group, token)` pair.
+/// Returns 0 if no deposits have been made yet.
+pub fn get_group_treasury_balance(env: Env, id: BytesN<32>, token: Address) -> i128 {
+    let key = DataKey::GroupTreasury(id, token);
+    let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0i128);
+    if balance > 0 {
+        bump_persistent(&env, &key);
+    }
+    balance
+}
+
+/// Returns the full deposit history for a group (all tokens, all depositors).
+pub fn get_group_deposit_history(env: Env, id: BytesN<32>) -> Vec<DepositRecord> {
+    let key = DataKey::GroupDepositHistory(id);
+    let result: Option<Vec<DepositRecord>> = env.storage().persistent().get(&key);
+    if result.is_some() {
+        bump_persistent(&env, &key);
+    }
+    result.unwrap_or(Vec::new(&env))
+}
+
+/// Returns the full deposit history for a specific depositor across all groups.
+pub fn get_depositor_history(env: Env, depositor: Address) -> Vec<DepositRecord> {
+    let key = DataKey::DepositorHistory(depositor);
+    let result: Option<Vec<DepositRecord>> = env.storage().persistent().get(&key);
+    if result.is_some() {
+        bump_persistent(&env, &key);
+    }
+    result.unwrap_or(Vec::new(&env))
 }

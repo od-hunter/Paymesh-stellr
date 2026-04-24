@@ -443,10 +443,25 @@ impl AutoShareContract {
     pub fn set_usage_fee(env: Env, fee: u32, admin: Address) {
         autoshare_logic::set_usage_fee(env, fee, admin).unwrap();
     }
-
     /// Returns the current usage fee.
     pub fn get_usage_fee(env: Env) -> u32 {
         autoshare_logic::get_usage_fee(env)
+    }
+
+    /// Sets the protocol fee percentage (0–100). Pass `group_id = None` for the global
+    /// default, or `Some(id)` to set a group-specific override. Admin only.
+    pub fn set_protocol_fee(
+        env: Env,
+        admin: Address,
+        fee_percent: u32,
+        group_id: Option<BytesN<32>>,
+    ) {
+        autoshare_logic::set_protocol_fee(env, admin, fee_percent, group_id).unwrap();
+    }
+
+    /// Returns the effective protocol fee percentage for a group (or the global default).
+    pub fn get_protocol_fee(env: Env, group_id: Option<BytesN<32>>) -> u32 {
+        autoshare_logic::get_protocol_fee(env, group_id)
     }
 
     /// Sets the maximum number of members per group (admin only).
@@ -706,6 +721,43 @@ impl AutoShareContract {
     pub fn cancel_fundraising(env: Env, id: BytesN<32>, caller: Address) {
         autoshare_logic::cancel_fundraising(env, id, caller).unwrap();
     }
+
+    // ============================================================================
+    // Treasury
+    // ============================================================================
+
+    /// Deposits `amount` of `token` into the group's treasury for future distributions.
+    /// The depositor must authorize the call. Group must be active and token supported.
+    pub fn deposit_funds(
+        env: Env,
+        id: BytesN<32>,
+        token: Address,
+        amount: i128,
+        depositor: Address,
+    ) {
+        autoshare_logic::deposit_funds(env, id, token, amount, depositor).unwrap();
+    }
+
+    /// Returns the treasury balance for a specific (group, token) pair.
+    pub fn get_group_treasury_balance(env: Env, id: BytesN<32>, token: Address) -> i128 {
+        autoshare_logic::get_group_treasury_balance(env, id, token)
+    }
+
+    /// Returns the full deposit history for a group.
+    pub fn get_group_deposit_history(
+        env: Env,
+        id: BytesN<32>,
+    ) -> Vec<base::types::DepositRecord> {
+        autoshare_logic::get_group_deposit_history(env, id)
+    }
+
+    /// Returns the full deposit history for a specific depositor across all groups.
+    pub fn get_depositor_history(
+        env: Env,
+        depositor: Address,
+    ) -> Vec<base::types::DepositRecord> {
+        autoshare_logic::get_depositor_history(env, depositor)
+    }
 }
 
 // 3. Link the tests (Requirement: Unit Tests)
@@ -874,5 +926,13 @@ mod update_payment_group_test;
 mod update_payment_group_boundary_test;
 
 #[cfg(test)]
-#[path = "tests/get_group_members_diagnostics_test.rs"]
-mod get_group_members_diagnostics_test;
+#[path = "tests/set_protocol_fee_test.rs"]
+mod set_protocol_fee_test;
+
+#[cfg(test)]
+#[path = "tests/update_payment_group_advanced_test.rs"]
+mod update_payment_group_advanced_test;
+
+#[cfg(test)]
+#[path = "tests/deposit_funds_test.rs"]
+mod deposit_funds_test;
