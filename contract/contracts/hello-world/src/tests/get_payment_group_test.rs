@@ -1,7 +1,7 @@
 use crate::base::types::GroupMember;
 use crate::test_utils::{create_test_group, create_test_members, setup_test_env};
 use crate::AutoShareContractClient;
-use soroban_sdk::{BytesN, String};
+use soroban_sdk::{testutils::Events, BytesN, FromVal, String};
 
 #[test]
 fn test_get_payment_group_returns_metadata_status_and_member_count() {
@@ -97,4 +97,57 @@ fn test_get_payment_group_unauthorized_update_fails() {
     });
 
     client.update_members(&group_id, &non_creator, &updated_members);
+}
+
+#[test]
+fn test_get_payment_group_emits_tracking_event() {
+    let test_env = setup_test_env();
+    let env = &test_env.env;
+    let client = AutoShareContractClient::new(env, &test_env.autoshare_contract);
+
+    let creator = test_env.users.get(0).unwrap().clone();
+    let token = test_env.mock_tokens.get(0).unwrap().clone();
+    let members = create_test_members(env, 3);
+
+    let group_id = create_test_group(
+        env,
+        &test_env.autoshare_contract,
+        &creator,
+        &members,
+        7,
+        &token,
+    );
+
+    // Call get_group_summary which should emit the event
+    client.get_group_summary(&group_id);
+
+    let events = env.events().all();
+    let tracking_event = events
+        .iter()
+        .find(|e| soroban_sdk::Symbol::from_val(env, &e.1.get(0).unwrap()) == soroban_sdk::Symbol::new(env, "group_summary_queried"))
+        .expect("group_summary_queried event not found");
+
+    // topics: [SYMBOL(group_summary_queried), group_id]
+    assert_eq!(
+        BytesN::<32>::from_val(env, &tracking_event.1.get(1).unwrap()),
+        group_id
+    );
+
+    let data =
+        soroban_sdk::Map::<soroban_sdk::Symbol, soroban_sdk::Val>::from_val(env, &tracking_event.2);
+    let member_count = u32::from_val(
+        env,
+        &data
+            .get(soroban_sdk::Symbol::new(env, "member_count"))
+            .unwrap(),
+    );
+    let remaining_usages = u32::from_val(
+        env,
+        &data
+            .get(soroban_sdk::Symbol::new(env, "remaining_usages"))
+            .unwrap(),
+    );
+
+    assert_eq!(member_count, 3);
+    assert_eq!(remaining_usages, 7);
 }

@@ -2,7 +2,7 @@ use crate::base::errors::Error;
 use crate::base::events::{
     emit_contribution, emit_creator_is_member, emit_distribution, emit_fundraising_cancelled,
     emit_fundraising_target_updated, emit_funds_deposited, emit_group_members_queried,
-    emit_group_protocol_fee_updated, emit_max_members_updated, emit_member_added,
+    emit_group_protocol_fee_updated, emit_group_summary_queried, emit_max_members_updated, emit_member_added,
     emit_member_removed, emit_payment_group_deactivated, emit_usage_fee_updated, AdminTransferred,
     AutoshareCreated, AutoshareUpdated, ContractPaused, ContractUnpaused, FundraisingStarted,
     GroupActivated, GroupDeactivated, GroupDeleted, GroupNameUpdated, GroupOwnershipTransferred,
@@ -342,6 +342,8 @@ pub fn get_group_summary(env: Env, id: BytesN<32>) -> Result<GroupSummary, Error
     if env.storage().persistent().has(&dist_key) {
         bump_persistent(&env, &dist_key);
     }
+
+    emit_group_summary_queried(&env, id.clone(), details.members.len() as u32, details.usage_count);
 
     Ok(GroupSummary {
         id: details.id,

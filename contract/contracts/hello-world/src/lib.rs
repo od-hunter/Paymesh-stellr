@@ -1155,5 +1155,9 @@ mod get_group_members_boundary_test;
 mod deposit_funds_test;
 
 #[cfg(test)]
+#[path = "tests/add_member_to_group_boundary_test.rs"]
+mod add_member_to_group_boundary_test;
+
+#[cfg(test)]
 #[path = "tests/add_member_to_group_test.rs"]
 mod add_member_to_group_test;

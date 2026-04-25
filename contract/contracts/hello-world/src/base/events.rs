@@ -524,3 +524,27 @@ pub fn emit_group_members_queried(
     }
     .publish(env);
 }
+
+/// Emitted when get_group_summary is queried for analytics tracking.
+#[contractevent]
+#[derive(Clone)]
+pub struct GroupSummaryQueried {
+    #[topic]
+    pub group_id: BytesN<32>,
+    pub member_count: u32,
+    pub remaining_usages: u32,
+}
+
+pub fn emit_group_summary_queried(
+    env: &Env,
+    group_id: BytesN<32>,
+    member_count: u32,
+    remaining_usages: u32,
+) {
+    GroupSummaryQueried {
+        group_id,
+        member_count,
+        remaining_usages,
+    }
+    .publish(env);
+}
