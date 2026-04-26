@@ -4001,3 +4001,73 @@ pub fn get_group_protocol_fee(env: Env, id: BytesN<32>) -> u32 {
         get_protocol_fee_val(&env)
     }
 }
+
+// ============================================================================
+// Unified protocol-fee entry points (Issue: set_protocol_fee event emission)
+// ============================================================================
+
+/// Unified setter: updates the global fee when `group_id` is `None`, or a
+/// group-specific override when `group_id` is `Some(id)`.
+///
+/// Emits `ProtocolFeeSet` with all fields needed for off-chain indexing:
+/// `admin` (indexed topic), `group_id`, `old_fee`, `new_fee`, `timestamp`.
+pub fn set_protocol_fee_unified(
+    env: Env,
+    admin: Address,
+    fee: u32,
+    group_id: Option<BytesN<32>>,
+) -> Result<(), Error> {
+    admin.require_auth();
+    require_admin(&env, &admin)?;
+
+    match group_id.clone() {
+        None => {
+            // Global fee — basis points (0–10 000)
+            if fee > 10000 {
+                return Err(Error::InvalidInput);
+            }
+            let old_fee = get_protocol_fee_val(&env);
+            let fee_key = DataKey::ProtocolFee;
+            env.storage().persistent().set(&fee_key, &fee);
+            bump_persistent(&env, &fee_key);
+
+            emit_protocol_fee_set(&env, admin, None, old_fee, fee);
+        }
+        Some(id) => {
+            // Group-specific override — whole percentage (0–100)
+            if fee > 100 {
+                return Err(Error::InvalidInput);
+            }
+            let group_key = DataKey::AutoShare(id.clone());
+            if !env.storage().persistent().has(&group_key) {
+                return Err(Error::NotFound);
+            }
+            let old_fee = get_group_protocol_fee(env.clone(), id.clone());
+            let key = DataKey::GroupProtocolFee(id.clone());
+            env.storage().persistent().set(&key, &fee);
+            bump_persistent(&env, &key);
+
+            emit_protocol_fee_set(&env, admin, Some(id), old_fee, fee);
+        }
+    }
+
+    Ok(())
+}
+
+/// Unified getter: returns the global fee when `group_id` is `None`, or the
+/// effective fee for a specific group (falls back to global) when `Some(id)`.
+pub fn get_protocol_fee_unified(env: Env, group_id: Option<BytesN<32>>) -> u32 {
+    match group_id {
+        None => get_protocol_fee_val(&env),
+        Some(id) => {
+            let key = DataKey::GroupProtocolFee(id);
+            let fee: Option<u32> = env.storage().persistent().get(&key);
+            if let Some(f) = fee {
+                bump_persistent(&env, &key);
+                f
+            } else {
+                get_protocol_fee_val(&env)
+            }
+        }
+    }
+}
