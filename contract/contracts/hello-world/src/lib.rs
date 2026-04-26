@@ -355,13 +355,83 @@ impl AutoShareContract {
         autoshare_logic::batch_add_members(env, id, caller, new_members).unwrap();
     }
 
-    /// Removes a single member from a group. Only the creator can call; group must be active.
-    /// After removal, remaining percentages may not sum to 100; call update_members to set a valid split.
+    /// Removes a single member from a payment group.
+    ///
+    /// Only the group creator (`caller`) may call this function, and the group must be
+    /// active. The removed member's percentage share is freed but **not** redistributed
+    /// — the remaining members keep their current percentages, which may no longer sum
+    /// to 100 %. Call [`Self::update_members`] afterwards to restore a valid split.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` — The Soroban execution environment.
+    /// * `id` — 32-byte unique identifier of the target group.
+    /// * `caller` — Group creator address. Must authorize this call.
+    /// * `member_address` — Address of the member to remove.
+    ///
+    /// # Authorization
+    ///
+    /// Requires `caller.require_auth()`. The caller must be the stored group creator.
+    ///
+    /// # Emitted events
+    ///
+    /// Emits [`AutoshareUpdated`] and [`MemberRemoved`]:
+    /// - `MemberRemoved { group_id (topic), member (topic), removed_percentage, pending_earnings }`
+    ///
+    /// # Panics
+    ///
+    /// Panics (transaction aborted) if:
+    /// - The contract is paused.
+    /// - The group does not exist.
+    /// - `caller` is not the group creator.
+    /// - The group is inactive.
+    /// - `member_address` is not a current member of the group.
+    ///
+    /// # Related functions
+    ///
+    /// * [`Self::remove_member_from_group`] — alias with identical behaviour.
+    /// * [`Self::update_members`] — restore a valid 100 % split after removal.
+    /// * [`Self::get_member_earnings`] — query a member's accrued earnings.
     pub fn remove_group_member(env: Env, id: BytesN<32>, caller: Address, member_address: Address) {
         autoshare_logic::remove_group_member(env, id, caller, member_address).unwrap();
     }
 
-    /// Removes a member from a payment group. Semantically identical to [`Self::remove_group_member`].
+    /// Removes a member from a payment group.
+    ///
+    /// Semantically identical to [`Self::remove_group_member`] — this entry point exists
+    /// so integrators and tests can use the more descriptive name
+    /// `remove_member_from_group`.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` — The Soroban execution environment.
+    /// * `id` — 32-byte unique identifier of the target group.
+    /// * `caller` — Group creator address. Must authorize this call.
+    /// * `member_address` — Address of the member to remove.
+    ///
+    /// # Authorization
+    ///
+    /// Requires `caller.require_auth()`. The caller must be the stored group creator.
+    ///
+    /// # Emitted events
+    ///
+    /// Emits [`AutoshareUpdated`] and [`MemberRemoved`]:
+    /// - `MemberRemoved { group_id (topic), member (topic), removed_percentage, pending_earnings }`
+    ///
+    /// # Panics
+    ///
+    /// Panics (transaction aborted) if:
+    /// - The contract is paused.
+    /// - The group does not exist.
+    /// - `caller` is not the group creator.
+    /// - The group is inactive.
+    /// - `member_address` is not a current member of the group.
+    ///
+    /// # Related functions
+    ///
+    /// * [`Self::remove_group_member`] — canonical alias.
+    /// * [`Self::update_members`] — restore a valid 100 % split after removal.
+    /// * [`Self::get_member_earnings`] — query a member's accrued earnings.
     pub fn remove_member_from_group(
         env: Env,
         id: BytesN<32>,
