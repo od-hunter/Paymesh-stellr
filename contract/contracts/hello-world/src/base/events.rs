@@ -114,6 +114,7 @@ pub struct PaymentGroupCreated {
     pub timestamp: u64,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn emit_payment_group_created(
     env: &Env,
     id: BytesN<32>,

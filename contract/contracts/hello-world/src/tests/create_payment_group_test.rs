@@ -63,8 +63,7 @@ fn test_create_payment_group_emits_payment_group_created_event_with_indexed_and_
     let event = events
         .iter()
         .find(|e| {
-            Symbol::from_val(env, &e.1.get(0).unwrap())
-                == Symbol::new(env, "payment_group_created")
+            Symbol::from_val(env, &e.1.get(0).unwrap()) == Symbol::new(env, "payment_group_created")
         })
         .expect("payment_group_created event not found");
 
@@ -75,16 +74,36 @@ fn test_create_payment_group_emits_payment_group_created_event_with_indexed_and_
 
     // data = map { usage_count, usage_fee, total_cost, member_limit, timestamp }
     let data = soroban_sdk::Map::<soroban_sdk::Symbol, soroban_sdk::Val>::from_val(env, &event.2);
-    let event_usage_count =
-        u32::from_val(env, &data.get(soroban_sdk::Symbol::new(env, "usage_count")).unwrap());
-    let usage_fee =
-        u32::from_val(env, &data.get(soroban_sdk::Symbol::new(env, "usage_fee")).unwrap());
-    let total_cost =
-        i128::from_val(env, &data.get(soroban_sdk::Symbol::new(env, "total_cost")).unwrap());
-    let member_limit =
-        u32::from_val(env, &data.get(soroban_sdk::Symbol::new(env, "member_limit")).unwrap());
-    let timestamp =
-        u64::from_val(env, &data.get(soroban_sdk::Symbol::new(env, "timestamp")).unwrap());
+    let event_usage_count = u32::from_val(
+        env,
+        &data
+            .get(soroban_sdk::Symbol::new(env, "usage_count"))
+            .unwrap(),
+    );
+    let usage_fee = u32::from_val(
+        env,
+        &data
+            .get(soroban_sdk::Symbol::new(env, "usage_fee"))
+            .unwrap(),
+    );
+    let total_cost = i128::from_val(
+        env,
+        &data
+            .get(soroban_sdk::Symbol::new(env, "total_cost"))
+            .unwrap(),
+    );
+    let member_limit = u32::from_val(
+        env,
+        &data
+            .get(soroban_sdk::Symbol::new(env, "member_limit"))
+            .unwrap(),
+    );
+    let timestamp = u64::from_val(
+        env,
+        &data
+            .get(soroban_sdk::Symbol::new(env, "timestamp"))
+            .unwrap(),
+    );
 
     assert_eq!(event_usage_count, usage_count);
     assert_eq!(usage_fee, 25);
