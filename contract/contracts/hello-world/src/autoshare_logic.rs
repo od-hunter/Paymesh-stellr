@@ -3,10 +3,10 @@ use crate::base::events::{
     emit_contribution, emit_creator_is_member, emit_distribution, emit_fundraising_cancelled,
     emit_fundraising_target_updated, emit_funds_deposited, emit_group_members_queried,
     emit_group_protocol_fee_updated, emit_group_summary_queried, emit_max_members_updated,
-    emit_member_added, emit_member_removed, emit_payment_group_deactivated, emit_usage_fee_updated,
-    AdminTransferred, AutoshareCreated, AutoshareUpdated, ContractPaused, ContractUnpaused,
-    FundraisingStarted, GroupActivated, GroupDeactivated, GroupDeleted, GroupNameUpdated,
-    GroupOwnershipTransferred, Withdrawal,
+    emit_member_added, emit_member_removed, emit_payment_group_deactivated, emit_protocol_fee_set,
+    emit_usage_fee_updated, AdminTransferred, AutoshareCreated, AutoshareUpdated, ContractPaused,
+    ContractUnpaused, FundraisingStarted, GroupActivated, GroupDeactivated, GroupDeleted,
+    GroupNameUpdated, GroupOwnershipTransferred, Withdrawal,
 };
 
 use crate::base::types::{
@@ -4130,8 +4130,8 @@ pub fn set_protocol_fee_unified(
 
     match group_id.clone() {
         None => {
-            // Global fee — basis points (0–10 000)
-            if fee > 10000 {
+            // Global fee — whole percentage (0–100)
+            if fee > 100 {
                 return Err(Error::InvalidInput);
             }
             let old_fee = get_protocol_fee_val(&env);
@@ -4145,10 +4145,6 @@ pub fn set_protocol_fee_unified(
             // Group-specific override — whole percentage (0–100)
             if fee > 100 {
                 return Err(Error::InvalidInput);
-            }
-            let group_key = DataKey::AutoShare(id.clone());
-            if !env.storage().persistent().has(&group_key) {
-                return Err(Error::NotFound);
             }
             let old_fee = get_group_protocol_fee(env.clone(), id.clone());
             let key = DataKey::GroupProtocolFee(id.clone());
