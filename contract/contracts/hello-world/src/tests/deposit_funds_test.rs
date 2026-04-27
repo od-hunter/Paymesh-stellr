@@ -167,7 +167,10 @@ fn test_deposit_near_max_accumulation_without_overflow() {
     client.deposit_funds(&id, &token, &first, &depositor);
     client.deposit_funds(&id, &token, &second, &depositor);
 
-    assert_eq!(client.get_group_treasury_balance(&id, &token), first + second);
+    assert_eq!(
+        client.get_group_treasury_balance(&id, &token),
+        first + second
+    );
 }
 
 // ─── History recording ───────────────────────────────────────────────────────
@@ -463,7 +466,10 @@ fn test_ceiling_adjacent_failed_deposit_reverts_state() {
     mint_tokens(&env, &token, &depositor, ceiling_amount);
 
     client.deposit_funds(&id, &token, &ceiling_amount, &depositor);
-    assert_eq!(client.get_group_treasury_balance(&id, &token), ceiling_amount);
+    assert_eq!(
+        client.get_group_treasury_balance(&id, &token),
+        ceiling_amount
+    );
     assert_eq!(client.get_group_deposit_history(&id).len(), 1);
     assert_eq!(client.get_depositor_history(&depositor).len(), 1);
 
@@ -471,7 +477,10 @@ fn test_ceiling_adjacent_failed_deposit_reverts_state() {
     let result = client.try_deposit_funds(&id, &token, &1, &depositor);
     assert!(result.is_err());
 
-    assert_eq!(client.get_group_treasury_balance(&id, &token), ceiling_amount);
+    assert_eq!(
+        client.get_group_treasury_balance(&id, &token),
+        ceiling_amount
+    );
     assert_eq!(client.get_group_deposit_history(&id).len(), 1);
     assert_eq!(client.get_depositor_history(&depositor).len(), 1);
 }
@@ -497,7 +506,10 @@ fn test_extreme_deposit_count_history_growth() {
     let depositor_history = client.get_depositor_history(&depositor);
     assert_eq!(group_history.len(), count as u32);
     assert_eq!(depositor_history.len(), count as u32);
-    assert_eq!(client.get_group_treasury_balance(&id, &token), count as i128);
+    assert_eq!(
+        client.get_group_treasury_balance(&id, &token),
+        count as i128
+    );
 }
 
 // ─── Post-reactivation ───────────────────────────────────────────────────────
